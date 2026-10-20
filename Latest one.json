@@ -1,0 +1,644 @@
+{
+  "name": "Latest one",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "083da91c-0ef6-44d0-845d-3efeed915dad",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7c896cdd-05a7-46b3-8bff-da8eb96cb48f",
+              "name": "product_name",
+              "value": "Groww",
+              "type": "string"
+            },
+            {
+              "id": "5cf45c52-057e-43de-99c5-549a929adef5",
+              "name": "reviews_csv_url",
+              "value": "https://docs.google.com/spreadsheets/d/e/2PACX-1vSZJl6-m4HZWnJyGK5vaBalhGWtmgV9CGK5nIYYTPi6w-PkANOwvD1BYpkKpJKxHzgYNzaNtG_7cTTg/pub?output=csv",
+              "type": "string"
+            },
+            {
+              "id": "49917d0a-2078-4727-a8c9-2aa33a1ce260",
+              "name": "lookback_days",
+              "value": 84,
+              "type": "number"
+            },
+            {
+              "id": "c41f6f23-e53f-4758-9518-8b4c68751f16",
+              "name": "max_reviews",
+              "value": 300,
+              "type": "number"
+            },
+            {
+              "id": "67510668-fdcb-4b10-993e-4564e14a8003",
+              "name": "official_link_1",
+              "value": "https://groww.in/pricing",
+              "type": "string"
+            },
+            {
+              "id": "3daaf957-ad82-46dc-94e8-81110a39d6e2",
+              "name": "official_link_2",
+              "value": "https://groww.in/help/stocks,-f&o,-ipo-&-mtf/discoverable/what-are-the-different-charges-mentioned-in-the-report",
+              "type": "string"
+            },
+            {
+              "id": "cd4e5833-19e2-4354-9991-a87ca812b13c",
+              "name": "doc_id",
+              "value": "REPLACE_WITH_GOOGLE_DOC_ID",
+              "type": "string"
+            },
+            {
+              "id": "cb22e330-55d6-42ca-af38-926a4e9be946",
+              "name": "email_to",
+              "value": "kankanadr75@gmail.com",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f545e210-1af5-49d0-b6b4-3dbc673c8f6c",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -32,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.reviews_csv_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "65438a9a-0884-4707-aefd-498329edaa98",
+      "name": "Get reviews CSV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        208,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "6e69cff5-b1a0-48f1-b636-8aeca7c3c37b",
+      "name": "Parse CSV",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        448,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst cutoff = Date.now() - cfg.lookback_days * 86400000;\nconst pick = (r, keys) => { for (const k of keys) if (r[k] !== undefined && r[k] !== '') return r[k]; return ''; };\nlet rows = items.map(i => i.json).map(r => ({\n  text: String(pick(r, ['review','Review','content','Content','review_text','text','body'])).replace(/\\s+/g,' ').trim(),\n  rating: pick(r, ['rating','Rating','score','Score','stars']),\n  date: pick(r, ['date','Date','at','created_at','review_date'])\n})).filter(r => r.text.length > 15);\n// keep only last N days when the date column is readable\nrows = rows.filter(r => { const t = Date.parse(r.date); return isNaN(t) || t >= cutoff; });\nrows = rows.slice(0, cfg.max_reviews);\nconst reviews_text = rows.map((r, i) => `[${i+1}] (rating ${r.rating || 'n/a'}) ${r.text.slice(0, 300)}`).join('\\n');\nreturn [{ json: { product_name: cfg.product_name, lookback_days: cfg.lookback_days, review_count: rows.length, reviews_text } }];"
+      },
+      "id": "94481dff-e2d9-4fd8-b423-52ca51add97c",
+      "name": "Prep reviews",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a product analyst for {{ $json.product_name }}, an investing app. Analyze the customer reviews below (last {{ $json.lookback_days }} days, {{ $json.review_count }} reviews).\n\nTasks:\n1. Cluster the reviews into at most 5 themes.\n2. Pick the top 3 themes by number of reviews.\n3. Extract 3 real user quotes. Copy each EXACTLY, word for word, from a different review. Use a short excerpt. No names or personal data.\n4. Identify 1 recurring confusion or pain point about a fee or charge. Name the fee and describe in one sentence what users misunderstand.\n\nReturn ONLY valid JSON, no markdown, in this shape:\n{\"themes\":[{\"name\":\"\",\"count\":0,\"summary\":\"\"}],\"top_themes\":[\"\",\"\",\"\"],\"quotes\":[\"\",\"\",\"\"],\"fee_issue\":{\"fee_name\":\"\",\"confusion\":\"\",\"evidence_count\":0}}\n\nReviews:\n{{ $json.reviews_text }}"
+      },
+      "id": "80952d2e-9223-4900-9003-b539e2a77bf1",
+      "name": "Theme LLM",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        928,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "6dc9d68e-912c-4e75-a976-17f651f3971c",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        928,
+        368
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.text || '').replace(/```json|```/g, '').trim();\nconst d = JSON.parse(raw);\nreturn [{ json: { themes: d.themes, top_themes: (d.top_themes || []).slice(0, 3), quotes: (d.quotes || []).slice(0, 3), fee_issue: d.fee_issue } }];"
+      },
+      "id": "8583d247-eea5-4a5b-a27a-1a54b8865a4a",
+      "name": "Parse themes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Write a weekly product pulse for the {{ $('Config').first().json.product_name }} product team. STRICT limit: 250 words or fewer. Use only the data below. Do not invent facts or numbers.\n\nStructure:\n1. Top themes (3 short lines)\n2. User quotes (the 3 quotes, in quotation marks)\n3. Key observation (2 to 3 sentences: what is going wrong or trending, include the fee confusion)\n4. Action ideas (exactly 3, one line each)\n\nTop themes: {{ JSON.stringify($json.top_themes) }}\nQuotes: {{ JSON.stringify($json.quotes) }}\nFee confusion: {{ JSON.stringify($json.fee_issue) }}\nTheme details: {{ JSON.stringify($json.themes) }}"
+      },
+      "id": "8fc3f837-5604-4cd0-9bdd-d5ee13dd8a4b",
+      "name": "Pulse LLM",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        1408,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "4d86b2b8-6b41-41fb-bdb8-a01c37d384b9",
+      "name": "OpenAI Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1344,
+        400
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Write a customer-facing explanation of this fee, based on what users are confused about.\n\nFee: {{ $('Parse themes').first().json.fee_issue.fee_name }}\nUser confusion: {{ $('Parse themes').first().json.fee_issue.confusion }}\n\nRules:\n- At most 6 bullet points, clear and in a neutral, facts-only tone.\n- No investment advice, no promises, no opinions.\n- Only state facts you are sure about. If unsure, point the reader to the official source.\n- Use exactly these two official links as sources: {{ $('Config').first().json.official_link_1 }} and {{ $('Config').first().json.official_link_2 }}\n\nReturn ONLY valid JSON, no markdown:\n{\"bullets\":[\"\",\"\",\"\"],\"source_links\":[\"\",\"\"]}"
+      },
+      "id": "9cd552d4-2f84-4512-ac43-0012aaed324f",
+      "name": "Explainer LLM",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        1696,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "255062fb-f540-4b6b-99ab-a5ba933e0632",
+      "name": "OpenAI Chat Model2",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1584,
+        400
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst t = $('Parse themes').first().json;\nconst pulse = ($('Pulse LLM').first().json.text || '').trim();\nlet ex;\ntry { ex = JSON.parse(($('Explainer LLM').first().json.text || '').replace(/```json|```/g, '').trim()); }\ncatch (e) { ex = { bullets: [], source_links: [] }; }\nconst bullets = (ex.bullets || []).slice(0, 6);\nconst links = [cfg.official_link_1, cfg.official_link_2];\nconst date = new Date().toISOString().slice(0, 10);\nconst norm = s => String(s).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\\s+/g, ' ').trim();\nconst corpus = norm($('Prep reviews').first().json.reviews_text);\nconst checks = {\n  pulse_words: pulse.split(/\\s+/).filter(Boolean).length,\n  pulse_within_250: pulse.split(/\\s+/).filter(Boolean).length <= 250,\n  bullets_within_6: bullets.length > 0 && bullets.length <= 6,\n  two_source_links: links.every(l => l && !l.startsWith('REPLACE')),\n  quotes_found_in_reviews: t.quotes.map(q => corpus.includes(norm(q)))\n};\nconst explanation = bullets.map(b => '- ' + b).join('\\n') + '\\n\\nSources:\\n' + links.join('\\n') + '\\nLast checked: ' + date;\nconst email_subject = 'Weekly Product Pulse + Customer Clarification - ' + date;\nconst email_body = pulse + '\\n\\n---\\nFee explanation (support snippet)\\n\\n' + explanation;\nreturn [{ json: {\n  date, top_themes: t.top_themes, weekly_pulse: pulse,\n  identified_fee_issue: t.fee_issue, explanation_bullets: bullets, source_links: links,\n  last_checked: date, explanation, email_subject, email_body, email_to: cfg.email_to, doc_id: cfg.doc_id, checks\n} }];"
+      },
+      "id": "b7fbf2fa-565c-4ee0-a57b-f3fe2ddcff2b",
+      "name": "Assemble and check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "form",
+        "formTitle": "Approve before logging and drafting?",
+        "formDescription": "={{ $json.weekly_pulse }}\n\n{{ $json.explanation }}",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Decision",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Approve"
+                  },
+                  {
+                    "option": "Reject"
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "66e4f382-1888-479f-9fc8-3ed8c6133fd9",
+      "name": "Approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        192
+      ],
+      "webhookId": "92c4ac9f-4c23-4e55-804b-bf269464219b"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "7735d3bb-b649-4f57-a7f7-ff4b71ad2a8b",
+              "leftValue": "={{ $json.Decision }}",
+              "rightValue": "Approve",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7aaea6cf-af66-4692-81ab-335157b62750",
+      "name": "Approved",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2368,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=The user approved this output. Use ONLY your MCP tools to do these two actions:\n1. Append ONE entry to the Google Doc with id {{ $('Assemble and check').first().json.doc_id }}. The entry is this JSON, written as readable text with these exact fields: date, top_themes, weekly_pulse, identified_fee_issue, explanation_bullets, source_links.\n2. Create a Gmail DRAFT (do NOT send) to {{ $('Assemble and check').first().json.email_to }}.\n   Subject: {{ $('Assemble and check').first().json.email_subject }}\n   Body: the text under BODY below.\n\nENTRY JSON:\n{{ JSON.stringify({ date: $('Assemble and check').first().json.date, top_themes: $('Assemble and check').first().json.top_themes, weekly_pulse: $('Assemble and check').first().json.weekly_pulse, identified_fee_issue: $('Assemble and check').first().json.identified_fee_issue, explanation_bullets: $('Assemble and check').first().json.explanation_bullets, source_links: $('Assemble and check').first().json.source_links }) }}\n\nBODY:\n{{ $('Assemble and check').first().json.email_body }}\n\nWhen both actions are finished, reply with one line confirming each.",
+        "options": {
+          "systemMessage": "You log approved outputs and prepare email drafts using MCP tools. Never send an email. Never change the content you are given."
+        }
+      },
+      "id": "e0cc9635-1247-4ac3-9b6e-a285c2761c37",
+      "name": "MCP Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        2608,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "def3e1c9-6e0f-498a-8007-df7de5ac4036",
+      "name": "OpenAI Chat Model3",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2608,
+        304
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://kankana75.app.n8n.cloud/mcp/cec7d9f3-abd1-42ca-af42-8191aa61a765",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "1ccb6cb3-551f-48cf-a0f4-31c2bae0902e",
+      "name": "MCP Client",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        2768,
+        304
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "25e6cd20-8e92-4f83-adaf-161131ccad52",
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2928,
+        80
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "69492635-6ee9-42ff-aab8-2df50cd0d29f",
+      "name": "Rejected",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2624,
+        512
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Get reviews CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get reviews CSV": {
+      "main": [
+        [
+          {
+            "node": "Parse CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CSV": {
+      "main": [
+        [
+          {
+            "node": "Prep reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep reviews": {
+      "main": [
+        [
+          {
+            "node": "Theme LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Theme LLM": {
+      "main": [
+        [
+          {
+            "node": "Parse themes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Theme LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse themes": {
+      "main": [
+        [
+          {
+            "node": "Pulse LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pulse LLM": {
+      "main": [
+        [
+          {
+            "node": "Explainer LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Pulse LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Explainer LLM": {
+      "main": [
+        [
+          {
+            "node": "Assemble and check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Explainer LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble and check": {
+      "main": [
+        [
+          {
+            "node": "Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approval": {
+      "main": [
+        [
+          {
+            "node": "Approved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved": {
+      "main": [
+        [
+          {
+            "node": "MCP Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Agent": {
+      "main": [
+        [
+          {
+            "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "MCP Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Client": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "55391189-54f8-4b7b-a502-e6efb563eaa4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "937e5131707ccba059c397b9c1a51f8ce1ca8eb083bc82478b1338fbab825f48"
+  },
+  "nodeGroups": [],
+  "id": "AXnvjpPPrjR4slqt",
+  "tags": []
+}
